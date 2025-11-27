@@ -40,7 +40,7 @@ dbutils.library.restartPython()
 # Provide them via DB widgets or notebook arguments.
 
 # Notebook Environment
-dbutils.widgets.dropdown("env", "staging", ["staging", "prod"], "Environment Name")
+dbutils.widgets.dropdown("env", "staging", ["dev", "staging", "prod"], "Environment Name")
 env = dbutils.widgets.get("env")
 
 # Path to the Hive-registered Delta table containing the training data.
@@ -202,6 +202,8 @@ from databricks.feature_engineering import FeatureEngineeringClient
 # End any existing runs (in the case this notebook is being run for a second time)
 mlflow.end_run()
 
+
+mlflow.enable_system_metrics_logging()
 # Start an mlflow run, which is needed for the feature store to log the model
 mlflow.start_run()
 
@@ -241,12 +243,15 @@ import lightgbm as lgb
 from sklearn.model_selection import train_test_split
 import mlflow.lightgbm
 from mlflow.tracking import MlflowClient
+import numpy as np
+from sklearn.metrics import mean_squared_error,mean_absolute_error, r2_score
 
 
 features_and_label = training_df.columns
 
 # Collect data into a Pandas array for training
 data = training_df.toPandas()[features_and_label]
+data = data.dropna()
 
 train, test = train_test_split(data, random_state=123)
 X_train = train.drop(["fare_amount"], axis=1)
@@ -254,15 +259,45 @@ X_test = test.drop(["fare_amount"], axis=1)
 y_train = train.fare_amount
 y_test = test.fare_amount
 
-mlflow.lightgbm.autolog()
+mlflow.lightgbm.autolog(exclusive=False)
 train_lgb_dataset = lgb.Dataset(X_train, label=y_train.values)
 test_lgb_dataset = lgb.Dataset(X_test, label=y_test.values)
 
-param = {"num_leaves": 32, "objective": "regression", "metric": "rmse"}
+#param = {"num_leaves": 127, "objective": "regression", "metric": "rmse"}
+
+params = {
+    "objective": "regression",          
+    "metric": "rmse",                    
+    "learning_rate": 0.05,
+    "num_leaves": 63,
+    "max_depth": -1,
+    "feature_fraction": 0.8,
+    "bagging_fraction": 0.8,
+    "bagging_freq": 1,
+    "min_data_in_leaf": 50,
+    "lambda_l2": 1.0,
+    "min_gain_to_split": 0.01,
+    "verbosity": -1,
+}
+
+
 num_rounds = 100
 
 # Train a lightGBM model
 model = lgb.train(param, train_lgb_dataset, num_rounds)
+
+y_pred = model.predict(X_test)
+
+rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+mae = mean_absolute_error(y_test, y_pred)
+r2 = r2_score(y_test, y_pred)
+
+mlflow.log_metrics({
+    "rmse": rmse,
+    "mae": mae,
+    "r2": r2
+})
+
 
 # COMMAND ----------
 
@@ -280,7 +315,9 @@ fe.log_model(
 # The returned model URI is needed by the model deployment notebook.
 model_version = get_latest_model_version(model_name)
 model_uri = f"models:/{model_name}/{model_version}"
+mlflow.end_run()
 dbutils.jobs.taskValues.set("model_uri", model_uri)
 dbutils.jobs.taskValues.set("model_name", model_name)
 dbutils.jobs.taskValues.set("model_version", model_version)
 dbutils.notebook.exit(model_uri)
+
