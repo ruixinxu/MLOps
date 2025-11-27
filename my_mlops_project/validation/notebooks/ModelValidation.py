@@ -78,6 +78,7 @@ dbutils.widgets.text("model_name", "dev.my_mlops_project.my_mlops_project-model"
 dbutils.widgets.text("model_version", "", "Candidate Model Version")
 
 # COMMAND ----------
+
 run_mode = dbutils.widgets.get("run_mode").lower()
 assert run_mode == "disabled" or run_mode == "dry_run" or run_mode == "enabled"
 
@@ -149,6 +150,7 @@ enable_baseline_comparison = enable_baseline_comparison == "true"
 validation_input = dbutils.widgets.get("validation_input")
 assert validation_input
 data = spark.sql(validation_input)
+data = data.dropna()
 
 model_type = dbutils.widgets.get("model_type")
 targets = dbutils.widgets.get("targets")

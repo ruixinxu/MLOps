@@ -96,6 +96,10 @@ raw_data = spark.read.format("delta").load(input_table_path)
 
 # COMMAND ----------
 
+raw_data.display()
+
+# COMMAND ----------
+
 # DBTITLE 1,Compute features.
 # Compute the features. This is done by dynamically loading the features module.
 from importlib import import_module
